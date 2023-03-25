@@ -1,0 +1,293 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1252">
+<title> Compil </title>
+</head>
+<body>
+<h1 align="CENTER">
+<hr>
+Compilation
+<hr>
+</h1>
+
+<h2 align="CENTER">Corrigé du TP 1</h2>
+
+<ul><li>Le <tt>Makefile</tt></li></ul>
+<pre># Le Makefile de la mini-cal
+
+# Variables 
+CC = gcc
+CFLAGS = -Wall -ansi -pedantic
+
+# But principal
+world : stack.o lex.yy.c cal.h
+	$(CC) $(OFLAGS) stack.o lex.yy.c -o mini-cal 
+
+# De '.lex' a '.c'
+lex.yy.c : stack.h cal.h cal.lex
+	lex cal.lex
+
+# Le menage
+clean :
+	rm -f *.o *~
+
+</pre>
+
+<ul><li>Le module de gestion des piles</li></ul>
+
+<pre>/* =========================================== */
+/* MST 1, 98/99 -- Compilation                 */
+/*    Un module pour les piles d'entiers       */
+/* ------------------------------------------  */
+/* Fichier : stack.h                           */
+/* =========================================== */
+
+#ifndef STACK_H
+#define STACK_H
+
+#define STACKSIZE 30
+
+#define EMPTY_STACK_ERROR 10
+
+typedef 
+struct stack_pair
+{
+  int *sp;
+  int *sb;
+}* stack;
+
+stack new_stack();
+
+void push(int, stack);
+
+int top(stack);
+
+void pop(stack);
+
+
+#endif
+
+/* =========================================== */
+/* MST 1, 98/99 -- Compilation                 */
+/*    Un module pour les piles d'entiers       */
+/* ------------------------------------------  */
+/* Fichier : stack.c                           */
+/* =========================================== */
+
+#include <stdlib.h>
+#include <stdio.h>
+#include "stack.h"
+
+stack new_stack()
+{
+  stack s;
+
+  s = (stack)malloc(sizeof(struct stack_pair));
+  if (s==NULL)
+    {
+      perror("new_stack : out of memory");
+      return NULL;
+    }
+  /*printf("new s : %p\n", s);*/
+  s-&gt;sb = (int *)malloc(STACKSIZE*sizeof(int));
+  /*printf("new s-&gt;sb : %p\n", s-&gt;sb);*/
+  if (s-&gt;sb==NULL)
+    {
+      perror("new_stack : out of memory");
+      return NULL;
+    }
+  else
+    {
+      s-&gt;sp = s-&gt;sb;
+      /*printf("new : (s=%p), (s-&gt;sb=%p), (s-&gt;sp=%p)\n", s, s-&gt;sb, s-&gt;sp);*/
+      return s;
+    }
+}
+
+void push(int n, stack s)
+{
+  /*printf("push s-&gt;sp : %p\n", s-&gt;sp);*/
+  *(++s-&gt;sp) = n;
+  /*printf("push s-&gt;sp : %p, *(s-&gt;sp) : %d \n", s-&gt;sp, *(s-&gt;sp));*/
+
+}
+
+int top(stack s)
+{
+  if (s-&gt;sp&gt;s-&gt;sb) return *(s-&gt;sp);
+  else
+    {
+      perror("Empty stack\n");
+      exit(EMPTY_STACK_ERROR);
+    }
+}
+
+void pop(stack s)
+{
+  if (s-&gt;sp&gt;s-&gt;sb) s-&gt;sp--;
+  else
+    {
+      perror("Empty stack\n");
+      exit(EMPTY_STACK_ERROR);
+    }
+}
+
+void print_stack(stack s)
+{
+  int *p = s-&gt;sp;
+
+  while(p!=s-&gt;sb)
+    {
+      printf("(%d)", *(p--));
+    }
+  printf("\n");
+}
+</stdio.h></stdlib.h></pre>
+
+<ul><li>L'application</li></ul>
+
+<pre>/* =========================================== */
+/* MST 1, 98/99 -- Compilation                 */
+/*         Une calculette a memoire            */
+/* ------------------------------------------  */
+/* Fichier : cal.h                             */
+/* =========================================== */
+
+#include <string.h>
+
+/* Unites syntaxiques */
+enum token
+{ DOLLAR, DOT, EXMARK, NUM, OP, QMARK, VAR };
+typedef enum token token;
+
+/* Valeurs associees aux lexemes OP, NUM et VAR */
+union lexical_values
+{
+  char op;
+  int num;
+  char *var;
+};
+typedef union lexical_values lexical_values;
+
+/* Etats de la calculettes */
+enum states { EVALCMD, DISCMD, SKIP, STOCMD, WAIT };
+typedef enum states states;
+
+/* Les ressources */
+#define MEMSIZE 10
+
+
+states q;
+int    mem[MEMSIZE];
+stack  s;
+
+/* =========================================== */
+/* MST 1, 98/99 -- Compilation                 */
+/*         Une calculette a memoire            */
+/* ------------------------------------------  */
+/* Fichier : cal.lex                           */
+/* =========================================== */
+
+%{
+  #include <stdio.h>
+  #include "stack.h"
+  #include "cal.h"
+
+  void reduce(char op, stack s) {
+    int r1, r2;
+      
+    r2 = top(s); pop(s);
+    r1 = top(s); pop(s);
+    switch(op) {
+    case '+' : push(r1+r2, s);  break;
+    case '-' : push(r1-r2, s);  break;
+    case '*' : push(r1*r2, s);  break;
+    case '/' : push(r1/r2, s);  break;
+    } 
+  }
+  
+  int var_index(char *v) {
+    return v[1]-'0';
+  }
+
+  %}
+
+%option noyywrap
+
+%%
+[ \n\t]               { ; }
+"."                   { switch (q) {
+                         case WAIT : exit(0);
+                         case EVALCMD : mem[0] = top(s); printf("= %d\n", mem[0]); 
+                         default : q = WAIT; printf("# ");
+                        }
+                      }
+"?"                   { switch(q) {
+                         case WAIT : q=EVALCMD; break;
+                         case SKIP : break;
+                         default : perror("Illegal input\n"); q=SKIP;
+                        }
+                      }
+"!"                   { switch(q) {
+	                 case WAIT : q=STOCMD; break;
+			 case SKIP : break;
+                         default : perror("Illegal input\n"); q=SKIP;
+			}
+                      }
+"$"                   { switch(q) {
+			 case WAIT : q=DISCMD; break;
+			 case SKIP : break;
+			 default : perror("Illegal input\n"); q=SKIP;
+			}
+                      }
+[\+\*\-\/]            { switch(q) {
+			 case EVALCMD : reduce(yytext[0], s); break;
+			 case SKIP : break;
+			 default : perror("Illegal input\n"); q=SKIP;
+			}
+                      }
+[0-9]+                { switch(q) {
+			 case EVALCMD : push(atoi(yytext),s); break;
+			 case SKIP : break;
+			 default : perror("Illegal input\n"); q=SKIP;
+			}
+                      }
+v[1-9]                { switch(q) {
+			 case DISCMD  : printf("= %d\n", mem[var_index(yytext)]); break;
+			 case EVALCMD : push(mem[var_index(yytext)], s); break;
+			 case STOCMD  : 
+			   printf("%s &lt;- %d\n", yytext, mem[0]);
+			   mem[var_index(yytext)] = mem[0]; break;
+			 case WAIT    : perror("Illegal input\n"); q=SKIP; break;
+			}
+                      }
+.                     { if (q!=SKIP) { 
+                          perror("Illegal input\n"); q = SKIP;
+			}
+			else printf("");
+                      }
+%%
+
+void main()
+{
+
+  s = new_stack();
+  q = WAIT;
+
+  yyin = stdin;
+
+  printf(" -- Welcome to the mini-cal\n");
+  printf("  Type in either :\n");
+  printf("   - a display command  : $<var>.\n");
+  printf("   - a store command    : !<var>.\n");
+  printf("   - a compute command  : ?<exp>.\n");
+  printf("   - a quit command     : .\n");
+  printf("# "); 
+
+  yylex();
+
+}
+</exp></var></var></stdio.h></string.h></pre>
+
+
+
+</body></html>
